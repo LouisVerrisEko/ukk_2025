@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'home_page.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(
+      url: "https://yhbefkqsncmybqauhuwp.supabase.co",
+      anonKey:
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InloYmVma3FzbmNteWJxYXVodXdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk0MTAxNDIsImV4cCI6MjA1NDk4NjE0Mn0.LafwaShbomJDfsXD2MPfyKdYzMmE3K3CZ0Y4Ttw5itA");
   runApp(MyApp());
 }
 
 class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
   @override
   _LoginPageState createState() => _LoginPageState();
 }
@@ -16,18 +24,6 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
 
-  String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Email tidak boleh kosong';
-    }
-    final RegExp emailRegExp = RegExp(
-      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$',
-    );
-    if (!emailRegExp.hasMatch(value)) {
-      return 'Masukkan email yang valid';
-    }
-    return null;
-  }
 
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) {
@@ -59,15 +55,14 @@ class _LoginPageState extends State<LoginPage> {
               TextFormField(
                 controller: _emailController,
                 decoration: InputDecoration(
-                  labelText: 'Email',
+                  labelText: 'Username',
                   border: OutlineInputBorder(),
                   prefixIcon: IconButton(
-                    icon: Icon(Icons.email),
+                    icon: Icon(Icons.person),
                     onPressed: _openEmailApp,
                   ),
                 ),
                 keyboardType: TextInputType.emailAddress,
-                validator: _validateEmail,
               ),
               SizedBox(height: 16.0),
               TextFormField(
@@ -93,18 +88,25 @@ class _LoginPageState extends State<LoginPage> {
               ),
               SizedBox(height: 20.0),
               ElevatedButton(
-                onPressed: () {
-                  if (_formKey.currentState?.validate() ?? false) {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => HomeScreen()),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content:
-                              Text('Isi Email Dan Password Terlebih Dahulu')),
-                    );
+                onPressed: () async {
+                  if (_formKey.currentState!.validate()) {
+                    var result = await Supabase.instance.client
+                        .from("User")
+                        .select()
+                        .eq("Username", _emailController.text)
+                        .eq("Password", _passwordController.text);
+                    if (result.isNotEmpty) {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) => HomeScreen()),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content:
+                                Text('Username atau password salah')),
+                      );
+                    }
                   }
                 },
                 child: Text('Login'),
@@ -118,6 +120,8 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(

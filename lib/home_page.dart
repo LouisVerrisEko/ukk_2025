@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
@@ -9,19 +13,8 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  final List<Customer> customers = [
-    Customer('Louis', 'Tugurejo', '081222333666'),
-    Customer('Yesra', 'Kromengan', '081888333111'),
-    Customer('Nopal', 'Karangkates', '081999555111'),
-    Customer('Rangga', 'Karangrejo', '081666777999'),
-  ];
-
-  final List<Product> products = [
-    Product('Sepatu Running Nineteen 910', 10, 100000),
-    Product('Sepatu Running Nike Zoom Alphafly', 15, 150000),
-    Product('Jam Running', 20, 50000),
-    Product('Jersey Running', 30, 70000),
-  ];
+  List<Map> customers = [];
+  List<Map> products = [];
 
   final List<Sale> sales = [];
 
@@ -30,55 +23,97 @@ class _HomeScreenState extends State<HomeScreen>
   // Keranjang Belanja
   List<Map<String, dynamic>> cartItems = [];
   double totalAmount = 0.0;
+  void fetchProduk() async {
+    var result = await Supabase.instance.client.from("produk").select().order("ProdukID", ascending: true);
+    setState(() {
+      products = result;
+    });
+  }
+
+  void fetchPelanggan() async {
+    var result = await Supabase.instance.client.from("pelanggan").select().order("PelangganID", ascending: true);
+    setState(() {
+      customers = result;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    fetchPelanggan();
+    fetchProduk();
     _tabController = TabController(length: 4, vsync: this);
   }
 
   // Customer Management
-  void _deleteCustomer(int index) {
-    setState(() {
-      customers.removeAt(index);
-    });
+  void _deleteCustomer(int id) async {
+    await Supabase.instance.client
+        .from("pelanggan")
+        .delete()
+        .eq("PelangganID", id);
+    fetchPelanggan();
   }
 
-  void _editCustomer(Customer customer, int index) {
-    final TextEditingController _nameController =
-        TextEditingController(text: customer.name);
-    final TextEditingController _addressController =
-        TextEditingController(text: customer.address);
-    final TextEditingController _phoneController =
-        TextEditingController(text: customer.phoneNumber);
+  void _editCustomer(Map customer, int id) {
+    final TextEditingController nameController =
+        TextEditingController(text: customer["NamaPelanggan"]);
+    final TextEditingController addressController =
+        TextEditingController(text: customer["Alamat"]);
+    final TextEditingController phoneController =
+        TextEditingController(text: customer["NomorTelepon"]);
+    final formPelanggan = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text("Edit Pelanggan"),
-          content: Column(
-            children: [
-              TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(labelText: "Nama Pelanggan")),
-              TextField(
-                  controller: _addressController,
-                  decoration: InputDecoration(labelText: "Alamat")),
-              TextField(
-                  controller: _phoneController,
-                  decoration: InputDecoration(labelText: "Nomor Telepon")),
-            ],
+          content: Form(
+            key: formPelanggan,
+            child: Column(
+              children: [
+                TextFormField(
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Nama tidak boleh kosong";
+                      }
+                      return null;
+                    },
+                    controller: nameController,
+                    decoration: InputDecoration(labelText: "Nama Pelanggan")),
+                TextFormField(
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Alamat tidak boleh kosong";
+                      }
+                      return null;
+                    },
+                    controller: addressController,
+                    decoration: InputDecoration(labelText: "Alamat")),
+                TextFormField(
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Nomor telepon tidak boleh kosong";
+                      }
+                      return null;
+                    },
+                    controller: phoneController,
+                    decoration: InputDecoration(labelText: "Nomor Telepon")),
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                setState(() {
-                  customers[index].name = _nameController.text;
-                  customers[index].address = _addressController.text;
-                  customers[index].phoneNumber = _phoneController.text;
-                });
-                Navigator.of(context).pop();
+              onPressed: () async {
+                if (formPelanggan.currentState!.validate()) {
+                  await Supabase.instance.client.from("pelanggan").update({
+                    "NamaPelanggan": nameController.text,
+                    "NomorTelepon": phoneController.text,
+                    "Alamat": addressController.text
+                  }).eq("PelangganID", id);
+                  fetchPelanggan();
+                  Navigator.of(context).pop();
+                }
               },
               child: Text('Simpan'),
             ),
@@ -93,39 +128,68 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _addCustomer() {
-    final TextEditingController _nameController = TextEditingController();
-    final TextEditingController _addressController = TextEditingController();
-    final TextEditingController _phoneController = TextEditingController();
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController addressController = TextEditingController();
+    final TextEditingController phoneController = TextEditingController();
+    final formPelanggan = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text("Tambah Pelanggan"),
-          content: Column(
-            children: [
-              TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(labelText: "Nama Pelanggan")),
-              TextField(
-                  controller: _addressController,
-                  decoration: InputDecoration(labelText: "Alamat")),
-              TextField(
-                  controller: _phoneController,
-                  decoration: InputDecoration(labelText: "Nomor Telepon")),
-            ],
+          content: Form(
+            key: formPelanggan,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: InputDecoration(labelText: "Nama Pelanggan"),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return "Nama tidak boleh kosong";
+                    }
+                    return null;
+                  },
+                ),
+                TextFormField(
+                  controller: addressController,
+                  decoration: InputDecoration(labelText: "Alamat"),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return "Alamat tidak boleh kosong";
+                    }
+                    return null;
+                  },
+                ),
+                TextFormField(
+                  controller: phoneController,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: "Nomor Telepon"),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return "Nomor telepon tidak boleh kosong";
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                setState(() {
-                  customers.add(Customer(
-                    _nameController.text,
-                    _addressController.text,
-                    _phoneController.text,
-                  ));
-                });
-                Navigator.of(context).pop();
+              onPressed: () async {
+                if (formPelanggan.currentState!.validate()) {
+                  await Supabase.instance.client.from("pelanggan").insert([
+                    {
+                      "NamaPelanggan": nameController.text,
+                      "Alamat": addressController.text,
+                      "NomorTelepon": phoneController.text
+                    }
+                  ]);
+                  fetchPelanggan();
+                  Navigator.of(context).pop();
+                }
               },
               child: Text('Tambah'),
             ),
@@ -140,49 +204,78 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // Product Management
-  void _deleteProduct(int index) {
-    setState(() {
-      products.removeAt(index);
-    });
+  void _deleteProduct(int id) async {
+    await Supabase.instance.client.from("produk").delete().eq("ProdukID", id);
+    fetchProduk();
+    // setState(() {
+    //   products.removeAt(index);
+    // });
   }
 
-  void _editProduct(Product product, int index) {
-    final TextEditingController _nameController =
-        TextEditingController(text: product.name);
-    final TextEditingController _stockController =
-        TextEditingController(text: product.stock.toString());
-    final TextEditingController _priceController =
-        TextEditingController(text: product.price.toString());
+  void _editProduct(Map product, int id) {
+    final TextEditingController nameController =
+        TextEditingController(text: product["NamaProduk"]);
+    final TextEditingController stockController =
+        TextEditingController(text: product["Stok"].toString());
+    final TextEditingController priceController =
+        TextEditingController(text: product["Harga"].toString());
+    final formProduk = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text("Edit Produk"),
-          content: Column(
-            children: [
-              TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(labelText: "Nama Produk")),
-              TextField(
-                  controller: _stockController,
-                  decoration: InputDecoration(labelText: "Stok"),
-                  keyboardType: TextInputType.number),
-              TextField(
-                  controller: _priceController,
-                  decoration: InputDecoration(labelText: "Harga"),
-                  keyboardType: TextInputType.number),
-            ],
+          content: Form(
+            key: formProduk,
+            child: Column(
+              children: [
+                TextFormField(
+                    controller: nameController,
+                    decoration: InputDecoration(labelText: "Nama Produk"),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Nama produk tidak boleh kosong";
+                      }
+                      return null;
+                    }),
+                TextFormField(
+                    controller: stockController,
+                    decoration: InputDecoration(labelText: "Stok"),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Stok produk tidak boleh kosong";
+                      }
+                      return null;
+                    }),
+                TextFormField(
+                    controller: priceController,
+                    decoration: InputDecoration(labelText: "Harga"),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Harga produk tidak boleh kosong";
+                      }
+                      return null;
+                    }),
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                setState(() {
-                  products[index].name = _nameController.text;
-                  products[index].stock = int.parse(_stockController.text);
-                  products[index].price = double.parse(_priceController.text);
-                });
-                Navigator.of(context).pop();
+              onPressed: () async {
+                if (formProduk.currentState!.validate()) {
+                  await Supabase.instance.client.from("produk").update({
+                    "NamaProduk": nameController.text,
+                    "Stok": stockController.text,
+                    "Harga": priceController.text
+                  }).eq("ProdukID", id);
+                  fetchProduk();
+                  Navigator.of(context).pop();
+                }
               },
               child: Text('Simpan'),
             ),
@@ -197,41 +290,69 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _addProduct() {
-    final TextEditingController _nameController = TextEditingController();
-    final TextEditingController _stockController = TextEditingController();
-    final TextEditingController _priceController = TextEditingController();
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController stockController = TextEditingController();
+    final TextEditingController priceController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        var fromProduk = GlobalKey<FormState>();
         return AlertDialog(
           title: Text("Tambah Produk"),
-          content: Column(
-            children: [
-              TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(labelText: "Nama Produk")),
-              TextField(
-                  controller: _stockController,
-                  decoration: InputDecoration(labelText: "Stok"),
-                  keyboardType: TextInputType.number),
-              TextField(
-                  controller: _priceController,
-                  decoration: InputDecoration(labelText: "Harga"),
-                  keyboardType: TextInputType.number),
-            ],
+          content: Form(
+            key: fromProduk,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: InputDecoration(labelText: "Nama Produk"),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return "Nama produk tidak boleh kosong";
+                    }
+                    return null;
+                  },
+                ),
+                TextFormField(
+                    controller: stockController,
+                    decoration: InputDecoration(labelText: "Stok"),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Stok produk tidak boleh kosong";
+                      }
+                      return null;
+                    }),
+                TextFormField(
+                    controller: priceController,
+                    decoration: InputDecoration(labelText: "Harga"),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Harga produk tidak boleh kosong";
+                      }
+                      return null;
+                    }),
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                setState(() {
-                  products.add(Product(
-                    _nameController.text,
-                    int.parse(_stockController.text),
-                    double.parse(_priceController.text),
-                  ));
-                });
-                Navigator.of(context).pop();
+              onPressed: () async {
+                if (fromProduk.currentState!.validate()) {
+                  await Supabase.instance.client.from("produk").insert([
+                    {
+                      "NamaProduk": nameController.text,
+                      "Stok": stockController.text,
+                      "Harga": priceController.text
+                    }
+                  ]);
+                  fetchProduk();
+                  Navigator.of(context).pop();
+                }
               },
               child: Text('Tambah'),
             ),
@@ -247,7 +368,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   // Keranjang Belanja
   void _showProductDialog(Product product) {
-    final TextEditingController _quantityController = TextEditingController();
+    final TextEditingController quantityController = TextEditingController();
 
     showDialog(
       context: context,
@@ -255,7 +376,7 @@ class _HomeScreenState extends State<HomeScreen>
         return AlertDialog(
           title: Text('Pilih Jumlah untuk ${product.name}'),
           content: TextField(
-            controller: _quantityController,
+            controller: quantityController,
             keyboardType: TextInputType.number,
             decoration: InputDecoration(
               labelText: 'Jumlah',
@@ -264,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen>
           actions: [
             TextButton(
               onPressed: () {
-                int quantity = int.parse(_quantityController.text);
+                int quantity = int.parse(quantityController.text);
                 double totalProductPrice = product.price * quantity;
                 setState(() {
                   cartItems.add({
@@ -358,7 +479,7 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: Colors.lightBlueAccent,
         bottom: TabBar(
           controller: _tabController,
-          tabs: [
+          tabs: const [
             Tab(icon: Icon(Icons.person), text: 'Pelanggan'),
             Tab(icon: Icon(Icons.shopping_bag), text: 'Produk'),
             Tab(icon: Icon(Icons.sell), text: 'Penjualan'),
@@ -448,19 +569,20 @@ class _HomeScreenState extends State<HomeScreen>
             itemBuilder: (context, index) {
               return ListTile(
                 leading: Icon(Icons.person),
-                title: Text(customers[index].name),
+                title: Text(customers[index]["NamaPelanggan"]),
                 subtitle: Text(
-                    'Alamat: ${customers[index].address}\nNomor Telepon: ${customers[index].phoneNumber}'),
+                    'Alamat: ${customers[index]["Alamat"]}\nNomor Telepon: ${customers[index]["NomorTelepon"]}'),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
                       icon: Icon(Icons.edit),
-                      onPressed: () => _editCustomer(customers[index], index),
+                      onPressed: () => _editCustomer(customers[index], customers[index]["PelangganID"]),
                     ),
                     IconButton(
                       icon: Icon(Icons.delete),
-                      onPressed: () => _deleteCustomer(index),
+                      onPressed: () =>
+                          _deleteCustomer(customers[index]["PelangganID"]),
                     ),
                   ],
                 ),
@@ -473,12 +595,12 @@ class _HomeScreenState extends State<HomeScreen>
             itemBuilder: (context, index) {
               return ListTile(
                 leading: Icon(Icons.shopping_bag),
-                title: Text(products[index].name),
+                title: Text(products[index]["NamaProduk"]),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Stok: ${products[index].stock}'),
-                    Text('Harga: ${products[index].price}'),
+                    Text('Stok: ${products[index]["Stok"]}'),
+                    Text('Harga: ${products[index]["Harga"]}'),
                   ],
                 ),
                 trailing: Row(
@@ -486,15 +608,17 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     IconButton(
                       icon: Icon(Icons.edit),
-                      onPressed: () => _editProduct(products[index], index),
+                      onPressed: () => _editProduct(
+                          products[index], products[index]["ProdukID"]),
                     ),
                     IconButton(
                       icon: Icon(Icons.delete),
-                      onPressed: () => _deleteProduct(index),
+                      onPressed: () =>
+                          _deleteProduct(products[index]["ProdukID"]),
                     ),
                     IconButton(
                       icon: Icon(Icons.add_shopping_cart),
-                      onPressed: () => _showProductDialog(products[index]),
+                      onPressed: () => _showProductDialog(products[index][""]),
                     ),
                   ],
                 ),
@@ -529,9 +653,9 @@ class _HomeScreenState extends State<HomeScreen>
                   padding: const EdgeInsets.all(8.0),
                   child: ElevatedButton(
                     onPressed: () => _checkout(accountName),
-                    child: Text('Checkout'),
                     style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.lightBlueAccent),
+                    child: Text('Checkout'),
                   ),
                 ),
             ],
