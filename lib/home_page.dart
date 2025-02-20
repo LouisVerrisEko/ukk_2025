@@ -1,5 +1,11 @@
+//nama pembeli
+//Total
+//Tanggal
+
+import 'package:dropdown_textfield/dropdown_textfield.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/struk.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -14,9 +20,9 @@ class _HomeScreenState extends State<HomeScreen>
   late TabController _tabController;
 
   List<Map> customers = [];
-  List<Map> products = [];
+  List<Map<String, dynamic>> products = [];
 
-  final List<Sale> sales = [];
+  List<Map> sales = [];
 
   String accountName = "Louis";
 
@@ -24,16 +30,31 @@ class _HomeScreenState extends State<HomeScreen>
   List<Map<String, dynamic>> cartItems = [];
   double totalAmount = 0.0;
   void fetchProduk() async {
-    var result = await Supabase.instance.client.from("produk").select().order("ProdukID", ascending: true);
+    var result = await Supabase.instance.client
+        .from("produk")
+        .select()
+        .order("ProdukID", ascending: true);
     setState(() {
       products = result;
     });
   }
 
   void fetchPelanggan() async {
-    var result = await Supabase.instance.client.from("pelanggan").select().order("PelangganID", ascending: true);
+    var result = await Supabase.instance.client
+        .from("pelanggan")
+        .select()
+        .order("PelangganID", ascending: true);
     setState(() {
       customers = result;
+    });
+  }
+
+  void fetchSales() async {
+    var result = await Supabase.instance.client
+        .from("penjualan")
+        .select("*, pelanggan(*), detailpenjualan(*, produk(*))");
+    setState(() {
+      sales = result;
     });
   }
 
@@ -42,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     fetchPelanggan();
     fetchProduk();
+    fetchSales();
     _tabController = TabController(length: 4, vsync: this);
   }
 
@@ -367,17 +389,18 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // Keranjang Belanja
-  void _showProductDialog(Product product) {
+  void _showProductDialog(Map<String, dynamic> product) {
     final TextEditingController quantityController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Pilih Jumlah untuk ${product.name}'),
+          title: Text('Pilih Jumlah untuk ${product["NamaProduk"]}'),
           content: TextField(
             controller: quantityController,
             keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: InputDecoration(
               labelText: 'Jumlah',
             ),
@@ -386,13 +409,11 @@ class _HomeScreenState extends State<HomeScreen>
             TextButton(
               onPressed: () {
                 int quantity = int.parse(quantityController.text);
-                double totalProductPrice = product.price * quantity;
+                int totalProductPrice = (product["Harga"] * quantity) as int;
+                product["JumlahProduk"] = quantity;
+                product["Subtotal"] = totalProductPrice;
                 setState(() {
-                  cartItems.add({
-                    'product': product,
-                    'quantity': quantity,
-                    'totalPrice': totalProductPrice,
-                  });
+                  cartItems.add(product);
                   totalAmount += totalProductPrice;
                 });
                 Navigator.of(context).pop();
@@ -409,62 +430,38 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _checkout(String customerId) {
+  _checkout(int customerId) async {
+    var penjualan = await Supabase.instance.client.from("penjualan").insert([
+      {"TotalHarga": totalAmount, "PelangganID": customerId}
+    ]).select();
     // Cek jika keranjang belanja tidak kosong
     if (cartItems.isNotEmpty) {
       double totalAmountBeforeCheckout = 0.0;
       List<Map<String, dynamic>> itemsToRemove = [];
 
+      List detailSales = [];
       // Menghitung total harga seluruh keranjang belanja sebelum checkout
       for (var cartItem in cartItems) {
-        Product product = cartItem['product'];
-        int quantity = cartItem['quantity'];
-        totalAmountBeforeCheckout += product.price * quantity;
+        detailSales.add({
+          "PenjualanID": penjualan[0]["PenjualanID"],
+          "ProdukID": cartItem["ProdukID"],
+          "JumlahProduk": cartItem["JumlahProduk"],
+          "Subtotal": cartItem["Subtotal"]
+        });
       }
 
-      // Membuat list untuk checkout satu per satu
+      await Supabase.instance.client
+          .from("detailpenjualan")
+          .insert(detailSales);
+
       for (var cartItem in cartItems) {
-        Product product = cartItem['product'];
-        int quantity = cartItem['quantity'];
-
-        // Hitung total harga produk berdasarkan quantity
-        double totalProductPrice = product.price * quantity;
-
-        // Cek apakah stok produk mencukupi
-        if (product.stock >= quantity) {
-          setState(() {
-            // Mengurangi stok produk sesuai dengan jumlah yang dibeli
-            product.stock -= quantity;
-
-            // Pastikan stok tidak menjadi negatif
-            if (product.stock < 0) {
-              product.stock = 0;
-            }
-
-            // Menambahkan transaksi penjualan untuk setiap produk
-            sales.add(Sale(customerId, [cartItem], totalProductPrice));
-          });
-
-          // Menyimpan item untuk dihapus setelah checkout
-          itemsToRemove.add(cartItem);
-
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('${product.name} - Transaksi Berhasil')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Stok Tidak Cukup untuk ${product.name}')));
-        }
+        cartItem["Stok"] -= cartItem["JumlahProduk"];
+        cartItem.remove("Subtotal");
+        cartItem.remove("JumlahProduk");
       }
-
-      // Hapus produk dari keranjang setelah checkout selesai
-      for (var item in itemsToRemove) {
-        cartItems.remove(item);
-      }
-
-      // Update totalAmount setelah seluruh checkout selesai
-      setState(() {
-        totalAmount = 0.0; // Reset totalAmount ke 0 setelah checkout selesai
-      });
+      await Supabase.instance.client.from("produk").upsert(cartItems);
+      fetchSales();
+      return true;
     } else {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Keranjang Belanja Kosong')));
@@ -577,7 +574,8 @@ class _HomeScreenState extends State<HomeScreen>
                   children: [
                     IconButton(
                       icon: Icon(Icons.edit),
-                      onPressed: () => _editCustomer(customers[index], customers[index]["PelangganID"]),
+                      onPressed: () => _editCustomer(
+                          customers[index], customers[index]["PelangganID"]),
                     ),
                     IconButton(
                       icon: Icon(Icons.delete),
@@ -618,7 +616,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                     IconButton(
                       icon: Icon(Icons.add_shopping_cart),
-                      onPressed: () => _showProductDialog(products[index][""]),
+                      onPressed: () => _showProductDialog(products[index]),
                     ),
                   ],
                 ),
@@ -635,9 +633,9 @@ class _HomeScreenState extends State<HomeScreen>
                   itemBuilder: (context, index) {
                     var item = cartItems[index];
                     return ListTile(
-                      title: Text(item['product'].name),
+                      title: Text(item["NamaProduk"]),
                       subtitle: Text(
-                          'Jumlah: ${item['quantity']} | Total: Rp ${item['totalPrice']}'),
+                          'Jumlah: ${item['JumlahProduk']} | Total: Rp ${item['Subtotal']}'),
                     );
                   },
                 ),
@@ -652,16 +650,86 @@ class _HomeScreenState extends State<HomeScreen>
                 Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: ElevatedButton(
-                    onPressed: () => _checkout(accountName),
+                    onPressed: () {
+                      var pelangganCtrl = SingleValueDropDownController();
+
+                      showDialog(
+                          context: context,
+                          builder: (context) {
+                            return Dialog(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  DropDownTextField(
+                                      controller: pelangganCtrl,
+                                      dropDownList: [
+                                        ...List.generate(customers.length,
+                                            (index) {
+                                          return DropDownValueModel(
+                                              name: customers[index]
+                                                  ["NamaPelanggan"],
+                                              value: customers[index]
+                                                  ["PelangganID"]);
+                                        })
+                                      ]),
+                                  SizedBox(
+                                    height:
+                                        MediaQuery.of(context).size.height / 20,
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      var result = await _checkout(
+                                          pelangganCtrl.dropDownValue!.value);
+                                      if (result == true) {
+                                        setState(() {
+                                          cartItems.clear();
+                                          totalAmount = 0;
+                                        });
+                                        Navigator.of(context).pop();
+                                      }
+                                    },
+                                    child: Text("Checkout"),
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            Colors.lightBlueAccent),
+                                  )
+                                ],
+                              ),
+                            );
+                          });
+                    },
                     style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.lightBlueAccent),
-                    child: Text('Checkout'),
+                    child: Text('Pilih pembeli'),
                   ),
                 ),
             ],
           ),
-          // Detail Penjualan Tab
-          Center(child: Text('Detail Penjualan')),
+          ListView.builder(
+            itemCount: sales.length,
+            itemBuilder: (context, index) {
+              return ListTile(
+                  leading: Icon(Icons.shopping_bag),
+                  title: Text(sales[index]["pelanggan"]["NamaPelanggan"]),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Harga: ${sales[index]["TotalHarga"]}'),
+                      Text(
+                          'Tanggal penjualan: ${sales[index]["TanggalPenjualan"]}'),
+                    ],
+                  ),
+                  trailing: IconButton(
+                      onPressed: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    struk(penjualan: sales[index])));
+                      },
+                      icon: Icon(Icons.print)));
+            },
+          ),
         ],
       ),
       floatingActionButton: Padding(
@@ -685,26 +753,26 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-class Customer {
-  String name;
-  String address;
-  String phoneNumber;
+// class Customer {
+//   String name;
+//   String address;
+//   String phoneNumber;
 
-  Customer(this.name, this.address, this.phoneNumber);
-}
+//   Customer(this.name, this.address, this.phoneNumber);
+// }
 
-class Product {
-  String name;
-  int stock;
-  double price;
+// class Product {
+//   String name;
+//   int stock;
+//   double price;
 
-  Product(this.name, this.stock, this.price);
-}
+//   Product(this.name, this.stock, this.price);
+// }
 
-class Sale {
-  String customerId;
-  List<Map<String, dynamic>> cartItems;
-  double totalAmount;
+// class Sale {
+//   String customerId;
+//   List<Map<String, dynamic>> cartItems;
+//   double totalAmount;
 
-  Sale(this.customerId, this.cartItems, this.totalAmount);
-}
+//   Sale(this.customerId, this.cartItems, this.totalAmount);
+// }
