@@ -5,6 +5,7 @@
 import 'package:dropdown_textfield/dropdown_textfield.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/main.dart';
 import 'package:flutter_application_1/struk.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -552,6 +553,7 @@ class _HomeScreenState extends State<HomeScreen>
               title: Text('Log Out'),
               onTap: () {
                 // Implement logout logic here
+                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>LoginPage()));
               },
             ),
           ],
@@ -753,26 +755,3 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// class Customer {
-//   String name;
-//   String address;
-//   String phoneNumber;
-
-//   Customer(this.name, this.address, this.phoneNumber);
-// }
-
-// class Product {
-//   String name;
-//   int stock;
-//   double price;
-
-//   Product(this.name, this.stock, this.price);
-// }
-
-// class Sale {
-//   String customerId;
-//   List<Map<String, dynamic>> cartItems;
-//   double totalAmount;
-
-//   Sale(this.customerId, this.cartItems, this.totalAmount);
-// }
